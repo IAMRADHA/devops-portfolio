@@ -16,6 +16,24 @@ pipeline {
             }
         }
 
+        stage('Prepare EC2 Server') {
+            steps {
+                sshagent(credentials: ["${SSH_CRED}"]) {
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${SERVER_IP} '
+                            if ! command -v apache2 >/dev/null 2>&1; then
+                                sudo apt-get update
+                                sudo apt-get install -y apache2
+                            fi
+
+                            sudo mkdir -p /var/www/html
+                            sudo systemctl enable --now apache2
+                        '
+                    '''
+                }
+            }
+        }
+
         stage('Deploy to Apache Server') {
             steps {
                 sshagent(credentials: ["${SSH_CRED}"]) {
@@ -29,13 +47,17 @@ pipeline {
                         scp -o StrictHostKeyChecking=no -r \
                             images ${REMOTE_USER}@${SERVER_IP}:/tmp/
 
-                        echo "Deploying files to Apache..."
+                        echo "Deploying website..."
 
                         ssh -o StrictHostKeyChecking=no \
-                            ${REMOTE_USER}@${SERVER_IP} \
-                            "sudo cp /tmp/index.html /tmp/style.css /tmp/script.js /tmp/resume.pdf ${WEB_DIR}/ && sudo cp -r /tmp/images ${WEB_DIR}/"
+                            ${REMOTE_USER}@${SERVER_IP} '
+                                sudo cp /tmp/index.html /tmp/style.css \
+                                    /tmp/script.js /tmp/resume.pdf /var/www/html/
+                                sudo cp -r /tmp/images /var/www/html/
+                                sudo systemctl reload apache2
+                            '
 
-                        echo "Deployment completed!"
+                        echo "Deployment completed successfully!"
                     '''
                 }
             }
